@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-heading: 'Cinzel', serif;
+    --font-serif: 'Cormorant Garamond', serif;
+    --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #f7f9f6;
+    color: #243329;
+  }
+
+  h1, h2, h3, .font-heading {
+    font-family: var(--font-heading);
+  }
+
+  .font-serif-vintage {
+    font-family: var(--font-serif);
+  }
+}
+
+/* Custom scrollbars in green tree tone */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #eaf0e9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #7ca884;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #467350;
+}
+
+/* Botanical paper background texture */
+.bg-tree-paper {
+  background-color: #f7f9f6;
+  background-image: radial-gradient(#2d5a37 0.65px, transparent 0.65px), radial-gradient(#2d5a37 0.65px, #f7f9f6 0.65px);
+  background-size: 26px 26px;
+  background-position: 0 0, 13px 13px;
+  background-opacity: 0.05;
+}
+
+.tree-wood-shadow {
+  box-shadow: 0 10px 25px -5px rgba(22, 60, 36, 0.12), 0 8px 10px -6px rgba(22, 60, 36, 0.08);
+}
+
+.tree-card-glow {
+  box-shadow: 0 0 0 2px rgba(200, 159, 86, 0.4), 0 12px 24px -6px rgba(19, 57, 38, 0.2);
+}
+
+/* Smooth zoom canvas cursor */
+.cursor-grab {
+  cursor: grab;
+}
+.cursor-grabbing {
+  cursor: grabbing;
+}
