@@ -537,19 +537,11 @@ export default function TreeCanvas({
 
                 return (
                   <g key={id}>
-                    {/* White halo */}
+                    {/* Linha principal sólida verde floresta (visível em qualquer ângulo e alinhamento) */}
                     <path
                       d={pathData}
                       fill="none"
-                      stroke="#ffffff"
-                      strokeWidth="5"
-                      strokeOpacity="0.9"
-                    />
-                    {/* Main green curve */}
-                    <path
-                      d={pathData}
-                      fill="none"
-                      stroke="url(#tree-branch-gradient)"
+                      stroke="#1b4d3e"
                       strokeWidth="2.5"
                       strokeLinecap="round"
                     />
