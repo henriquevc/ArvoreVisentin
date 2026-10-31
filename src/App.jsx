@@ -117,21 +117,88 @@ export default function App() {
     }
   };
 
-  // Delete person
-  const handleDeletePerson = (personId) => {
+  // Helper to find all recursive descendant IDs for a given person
+  const getDescendantIds = useCallback((personId, allMembers) => {
+    const descendantIds = new Set();
+    const queue = [personId];
+
+    while (queue.length > 0) {
+      const currentParentId = queue.shift();
+      // Find all members who list currentParentId in their parents array
+      const children = allMembers.filter((m) => (m.parents || []).includes(currentParentId));
+      for (const child of children) {
+        if (!descendantIds.has(child.id)) {
+          descendantIds.add(child.id);
+          queue.push(child.id);
+        }
+      }
+    }
+
+    return Array.from(descendantIds);
+  }, []);
+
+  // Delete person and all their descendants with confirmation
+  const handleDeletePerson = useCallback((personId) => {
+    const target = members.find((m) => m.id === personId);
+    if (!target) return;
+
+    const descendantIds = getDescendantIds(personId, members);
+    const descendantCount = descendantIds.length;
+
+    let confirmMsg = '';
+    if (descendantCount > 0) {
+      confirmMsg = `⚠️ ATENÇÃO: Deseja realmente excluir "${target.name}" e todos os seus ${descendantCount} descendente(s) (filhos, netos, etc.) da árvore?\n\nEsta ação excluirá um total de ${descendantCount + 1} pessoas e não pode ser desfeita.`;
+    } else {
+      confirmMsg = `Deseja realmente remover "${target.name}" da árvore genealógica?`;
+    }
+
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    const idsToRemove = new Set([personId, ...descendantIds]);
+
     const updated = members
-      .filter((m) => m.id !== personId)
+      .filter((m) => !idsToRemove.has(m.id))
       .map((m) => ({
         ...m,
-        parents: (m.parents || []).filter((id) => id !== personId),
-        children: (m.children || []).filter((id) => id !== personId)
+        parents: (m.parents || []).filter((id) => !idsToRemove.has(id)),
+        children: (m.children || []).filter((id) => !idsToRemove.has(id))
       }));
 
     persistMembers(updated);
-    if (selectedPerson && selectedPerson.id === personId) {
+    if (selectedPerson && idsToRemove.has(selectedPerson.id)) {
       setSelectedPerson(null);
     }
-  };
+  }, [members, getDescendantIds, selectedPerson]);
+
+  // Global keyboard shortcut: Delete or Backspace key deletes selected person
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+
+      // Ignore if user is currently typing in an input, textarea, or select
+      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      const isInputFocused =
+        activeTag === 'input' ||
+        activeTag === 'textarea' ||
+        activeTag === 'select' ||
+        document.activeElement?.isContentEditable;
+
+      if (isInputFocused) return;
+
+      // Do not trigger keyboard delete if edit modal or party modal is open
+      if (isEditModalOpen || isPartyModeOpen) return;
+
+      if (selectedPerson) {
+        e.preventDefault();
+        handleDeletePerson(selectedPerson.id);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedPerson, isEditModalOpen, isPartyModeOpen, handleDeletePerson]);
 
   // Reorder siblings left/right (or up/down) in birth order
   const handleMoveSibling = useCallback((personId, direction) => {
@@ -331,6 +398,7 @@ export default function App() {
         onClose={() => setSelectedPerson(null)}
         onEdit={handleEditPerson}
         onAddChild={handleAddChild}
+        onDelete={handleDeletePerson}
         onSelectPerson={setSelectedPerson}
         onMoveSibling={handleMoveSibling}
         onFocusBranch={(branchId) => {

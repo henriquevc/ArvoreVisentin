@@ -422,12 +422,11 @@ export default function PersonEditModal({
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirm(`Tem certeza que deseja remover ${formData.name} da árvore?`)) {
-                      onDelete(formData.id);
-                      onClose();
-                    }
+                    onDelete(formData.id);
+                    onClose();
                   }}
                   className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-800 font-medium py-2 px-3 rounded-lg hover:bg-red-50 transition"
+                  title="Excluir pessoa e descendentes"
                 >
                   <Trash2 size={15} /> Excluir Membro
                 </button>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Edit3, UserPlus, Heart, Calendar, MapPin, Layers, Award, Sparkles, Compass, ArrowUpDown } from 'lucide-react';
+import { X, Edit3, UserPlus, Heart, Calendar, MapPin, Layers, Award, Sparkles, Compass, ArrowUpDown, Trash2 } from 'lucide-react';
 import { BRANCHES, GENERATION_LABELS, sortMembersByOrder } from '../data/initialFamilyData';
 
 export default function PersonDetailDrawer({
@@ -10,6 +10,7 @@ export default function PersonDetailDrawer({
   onEdit,
   onAddChild,
   onAddSpouse,
+  onDelete,
   onSelectPerson,
   onFocusBranch,
   onMoveSibling
@@ -335,6 +336,15 @@ export default function PersonDetailDrawer({
           >
             <UserPlus size={15} /> + Filho
           </button>
+          {onDelete && (
+            <button
+              onClick={() => onDelete(person.id)}
+              className="flex items-center justify-center gap-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 hover:text-red-700 py-2.5 px-3 rounded-xl font-medium text-xs transition shadow-sm"
+              title="Excluir pessoa e descendentes (tecla Delete)"
+            >
+              <Trash2 size={15} /> Excluir
+            </button>
+          )}
         </div>
 
         {person.branchId !== 'all' && (

@@ -159,7 +159,7 @@ export default function PartyPresentationModal({ isOpen, onClose, members = [], 
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto pt-6 text-center">
               <div className="bg-[#133926]/80 border border-emerald-700/40 p-4 rounded-2xl">
-                <span className="text-2xl font-bold font-heading text-amber-300">1880s</span>
+                <span className="text-2xl font-bold font-heading text-amber-300">1924s</span>
                 <p className="text-xs text-stone-300 mt-1">Imigração da Itália</p>
               </div>
               <div className="bg-[#133926]/80 border border-emerald-700/40 p-4 rounded-2xl">

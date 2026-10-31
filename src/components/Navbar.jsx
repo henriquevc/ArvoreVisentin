@@ -54,7 +54,7 @@ export default function Navbar({
                   FAMÍLIA VISENTIN
                 </h1>
                 <span className="hidden sm:inline-block text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold uppercase tracking-wider">
-                  Itália 1880
+                  Itália 1924
                 </span>
               </div>
               <p className="text-[11px] text-emerald-200/80 font-serif-vintage tracking-wide hidden sm:block">

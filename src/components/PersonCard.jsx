@@ -33,7 +33,7 @@ export default function PersonCard({
             1ª Geração • Patriarcas Imigrantes
           </span>
           <span className="text-amber-200/80 font-serif-vintage italic text-xs">
-            Itália 🇮🇹 1880
+            Itália 🇮🇹 1924
           </span>
         </div>
 
