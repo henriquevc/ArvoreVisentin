@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Edit3, UserPlus, Heart, Calendar, MapPin, Layers, Award, Sparkles, Compass, ArrowUpDown, Trash2 } from 'lucide-react';
+import { X, Edit3, UserPlus, Heart, Calendar, MapPin, Layers, Award, Sparkles, Compass, ArrowUpDown, Trash2, Lock } from 'lucide-react';
 import { BRANCHES, GENERATION_LABELS, sortMembersByOrder } from '../data/initialFamilyData';
 
 export default function PersonDetailDrawer({
@@ -11,6 +11,7 @@ export default function PersonDetailDrawer({
   onAddChild,
   onAddSpouse,
   onDelete,
+  onRequestUnlock,
   onSelectPerson,
   onFocusBranch,
   onMoveSibling
@@ -255,12 +256,14 @@ export default function PersonDetailDrawer({
               <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">
                 Filhos ({children.length})
               </span>
-              <button
-                onClick={() => onAddChild(person)}
-                className="text-[10px] text-emerald-800 hover:text-emerald-950 font-bold bg-emerald-50 px-2 py-0.5 rounded-md"
-              >
-                + Adicionar
-              </button>
+              {onAddChild && (
+                <button
+                  onClick={() => onAddChild(person)}
+                  className="text-[10px] text-emerald-800 hover:text-emerald-950 font-bold bg-emerald-50 px-2 py-0.5 rounded-md"
+                >
+                  + Adicionar
+                </button>
+              )}
             </div>
             {children.length > 0 ? (
               <div className="max-h-36 overflow-y-auto space-y-1">
@@ -322,30 +325,43 @@ export default function PersonDetailDrawer({
 
       {/* Footer Actions */}
       <div className="bg-stone-100 p-4 border-t border-stone-200 flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onEdit(person)}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#1b4d3e] hover:bg-[#133926] text-amber-50 py-2.5 px-4 rounded-xl font-medium text-xs shadow-sm transition"
-          >
-            <Edit3 size={15} /> Editar Dados & Foto
-          </button>
-          <button
-            onClick={() => onAddChild(person)}
-            className="flex items-center justify-center gap-1.5 bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 py-2.5 px-3 rounded-xl font-medium text-xs transition shadow-sm"
-            title="Adicionar Filho(a)"
-          >
-            <UserPlus size={15} /> + Filho
-          </button>
-          {onDelete && (
+        {onEdit ? (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => onDelete(person.id)}
-              className="flex items-center justify-center gap-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 hover:text-red-700 py-2.5 px-3 rounded-xl font-medium text-xs transition shadow-sm"
-              title="Excluir pessoa e descendentes (tecla Delete)"
+              onClick={() => onEdit(person)}
+              className="flex-1 flex items-center justify-center gap-2 bg-[#1b4d3e] hover:bg-[#133926] text-amber-50 py-2.5 px-4 rounded-xl font-medium text-xs shadow-sm transition"
             >
-              <Trash2 size={15} /> Excluir
+              <Edit3 size={15} /> Editar Dados & Foto
             </button>
-          )}
-        </div>
+            {onAddChild && (
+              <button
+                onClick={() => onAddChild(person)}
+                className="flex items-center justify-center gap-1.5 bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 py-2.5 px-3 rounded-xl font-medium text-xs transition shadow-sm"
+                title="Adicionar Filho(a)"
+              >
+                <UserPlus size={15} /> + Filho
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={() => onDelete(person.id)}
+                className="flex items-center justify-center gap-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 hover:text-red-700 py-2.5 px-3 rounded-xl font-medium text-xs transition shadow-sm"
+                title="Excluir pessoa e descendentes (tecla Delete)"
+              >
+                <Trash2 size={15} /> Excluir
+              </button>
+            )}
+          </div>
+        ) : (
+          onRequestUnlock && (
+            <button
+              onClick={onRequestUnlock}
+              className="w-full flex items-center justify-center gap-2 bg-white border border-stone-300 hover:border-emerald-700 hover:bg-emerald-50/50 text-stone-700 hover:text-emerald-900 py-2 px-4 rounded-xl font-medium text-xs transition shadow-sm"
+            >
+              <Lock size={14} /> Desbloquear com senha para editar
+            </button>
+          )
+        )}
 
         {person.branchId !== 'all' && (
           <button

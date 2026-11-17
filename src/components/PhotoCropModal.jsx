@@ -196,7 +196,10 @@ export default function PhotoCropModal({ isOpen, initialImage, onSave, onClose }
 
     outCtx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
 
-    const croppedDataUrl = outCanvas.toDataURL('image/png', 0.92);
+    const webpUrl = outCanvas.toDataURL('image/webp', 0.85);
+    const croppedDataUrl = webpUrl.startsWith('data:image/webp')
+      ? webpUrl
+      : outCanvas.toDataURL('image/png');
     onSave(croppedDataUrl);
     onClose();
   };

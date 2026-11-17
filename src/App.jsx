@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toPng } from 'html-to-image';
+import { Cloud } from 'lucide-react';
 import Navbar from './components/Navbar';
 import TreeCanvas from './components/TreeCanvas';
 import DirectoryView from './components/DirectoryView';
@@ -7,8 +8,33 @@ import StatsView from './components/StatsView';
 import PersonEditModal from './components/PersonEditModal';
 import PersonDetailDrawer from './components/PersonDetailDrawer';
 import PartyPresentationModal from './components/PartyPresentationModal';
+import PasswordUnlockModal from './components/PasswordUnlockModal';
 import { sampleFamilyMembers, getBranches, sortMembersByOrder } from './data/initialFamilyData';
 import { loadTreeData, saveTreeData, exportToJson, importFromJson } from './services/storage';
+import {
+  fetchCloudTree,
+  verifyEditPassword,
+  cloudReplaceAllMembers,
+  cloudSyncDiff,
+  getSavedSessionPassword,
+  saveSessionPassword
+} from './services/cloudApi';
+
+function applyMigrations(rawMembers) {
+  let hasMigration = false;
+  const migrated = rawMembers.map((m) => {
+    if (m.id === 'p-catarina' && m.name === 'Catarina Visentin') {
+      hasMigration = true;
+      return { ...m, name: 'Catterina Visentin' };
+    }
+    if (m.id === 'p-giuseppe' && m.spouseName && m.spouseName.includes('Catarina')) {
+      hasMigration = true;
+      return { ...m, spouseName: m.spouseName.replace('Catarina', 'Catterina') };
+    }
+    return m;
+  });
+  return { migrated, hasMigration };
+}
 
 export default function App() {
   const [members, setMembers] = useState(sampleFamilyMembers);
@@ -21,35 +47,101 @@ export default function App() {
   const [isPartyModeOpen, setIsPartyModeOpen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Cloud & Password Protection State
+  const [cloudConfigured, setCloudConfigured] = useState(false);
+  const [isCloudSeeded, setIsCloudSeeded] = useState(false);
+  const [isPasswordProtected, setIsPasswordProtected] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [editPassword, setEditPassword] = useState('');
+  const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
+  const [syncState, setSyncState] = useState('idle'); // 'idle' | 'syncing' | 'saved' | 'error'
+
+  // Refs to avoid stale closures in async sync helpers
+  const membersRef = useRef(members);
+  const cloudConfiguredRef = useRef(cloudConfigured);
+  const isCloudSeededRef = useRef(isCloudSeeded);
+  const editPasswordRef = useRef(editPassword);
+
+  useEffect(() => {
+    membersRef.current = members;
+  }, [members]);
+
+  useEffect(() => {
+    cloudConfiguredRef.current = cloudConfigured;
+  }, [cloudConfigured]);
+
+  useEffect(() => {
+    isCloudSeededRef.current = isCloudSeeded;
+  }, [isCloudSeeded]);
+
+  useEffect(() => {
+    editPasswordRef.current = editPassword;
+  }, [editPassword]);
+
+  const canEdit = !isPasswordProtected || isUnlocked;
+
   // Compute branches dynamically based on current members
   const branches = useMemo(() => getBranches(members), [members]);
 
-  // Load persisted data on mount
+  // Load persisted data (Cloud Turso first, falling back to local IndexedDB)
   useEffect(() => {
     async function init() {
       try {
-        const savedData = await loadTreeData();
-        if (savedData && Array.isArray(savedData) && savedData.length > 0) {
-          // Migration: Ensure Catterina's name is spelled with double 'tt'
-          let hasMigration = false;
-          const migrated = savedData.map((m) => {
-            if (m.id === 'p-catarina' && m.name === 'Catarina Visentin') {
-              hasMigration = true;
-              return { ...m, name: 'Catterina Visentin' };
+        const [localSavedData, cloudRes] = await Promise.all([
+          loadTreeData().catch(() => null),
+          fetchCloudTree().catch(() => ({ configured: false }))
+        ]);
+
+        if (cloudRes && cloudRes.configured) {
+          setCloudConfigured(true);
+          cloudConfiguredRef.current = true;
+          setIsPasswordProtected(Boolean(cloudRes.passwordProtected));
+
+          // Restore active admin session if previously unlocked in this tab
+          const savedPw = getSavedSessionPassword();
+          if (savedPw) {
+            try {
+              await verifyEditPassword(savedPw);
+              setEditPassword(savedPw);
+              editPasswordRef.current = savedPw;
+              setIsUnlocked(true);
+            } catch {
+              saveSessionPassword('');
             }
-            if (m.id === 'p-giuseppe' && m.spouseName && m.spouseName.includes('Catarina')) {
-              hasMigration = true;
-              return { ...m, spouseName: m.spouseName.replace('Catarina', 'Catterina') };
-            }
-            return m;
-          });
-          setMembers(migrated);
-          if (hasMigration) {
+          }
+
+          if (!cloudRes.empty && Array.isArray(cloudRes.members) && cloudRes.members.length > 0) {
+            // Cloud has official tree data — use it on all devices
+            const { migrated } = applyMigrations(cloudRes.members);
+            setMembers(migrated);
+            membersRef.current = migrated;
+            setIsCloudSeeded(true);
+            isCloudSeededRef.current = true;
+            setSyncState('saved');
             saveTreeData(migrated);
+          } else {
+            // Cloud database is brand new (empty) — preserve any local tree built on this browser
+            setIsCloudSeeded(false);
+            isCloudSeededRef.current = false;
+            if (localSavedData && Array.isArray(localSavedData) && localSavedData.length > 0) {
+              const { migrated } = applyMigrations(localSavedData);
+              setMembers(migrated);
+              membersRef.current = migrated;
+            }
+          }
+        } else {
+          // Offline / Local-only mode (Turso env vars not configured)
+          if (localSavedData && Array.isArray(localSavedData) && localSavedData.length > 0) {
+            const { migrated, hasMigration } = applyMigrations(localSavedData);
+            setMembers(migrated);
+            membersRef.current = migrated;
+            if (hasMigration) {
+              saveTreeData(migrated);
+            }
           }
         }
       } catch (err) {
-        console.error('Failed to load tree data', err);
+        console.error('Failed to initialize tree data', err);
       } finally {
         setIsLoaded(true);
       }
@@ -57,14 +149,98 @@ export default function App() {
     init();
   }, []);
 
-  // Save changes to IndexedDB / localStorage whenever members update
-  const persistMembers = useCallback((updatedMembers) => {
+  // Save changes locally AND sync to Turso Cloud
+  const persistMembers = useCallback(async (updatedMembers, options = {}) => {
+    const { forceFullReplace = false, passwordOverride } = options;
+    const prevMembers = membersRef.current;
+
     setMembers(updatedMembers);
+    membersRef.current = updatedMembers;
     saveTreeData(updatedMembers);
+
+    if (!cloudConfiguredRef.current) {
+      return;
+    }
+
+    const pw = passwordOverride !== undefined ? passwordOverride : editPasswordRef.current;
+    setSyncState('syncing');
+
+    try {
+      if (!isCloudSeededRef.current || forceFullReplace) {
+        await cloudReplaceAllMembers(updatedMembers, pw);
+        isCloudSeededRef.current = true;
+        setIsCloudSeeded(true);
+      } else {
+        await cloudSyncDiff(prevMembers, updatedMembers, pw);
+      }
+      setSyncState('saved');
+    } catch (err) {
+      console.error('Cloud sync failed:', err);
+      setSyncState('error');
+      if (err?.status === 401) {
+        setIsUnlocked(false);
+        saveSessionPassword('');
+        setIsUnlockModalOpen(true);
+        alert('Sessão expirada ou senha inválida. Digite a senha novamente para salvar na nuvem.');
+      } else {
+        alert(`Erro ao sincronizar com a nuvem: ${err?.message || 'Verifique sua conexão.'}`);
+      }
+    }
   }, []);
+
+  // Handle unlocking edit mode with password
+  const handleUnlock = async (password) => {
+    await verifyEditPassword(password);
+    saveSessionPassword(password);
+    setEditPassword(password);
+    editPasswordRef.current = password;
+    setIsUnlocked(true);
+
+    // If cloud database is still empty, offer 1-click upload of current tree
+    if (cloudConfiguredRef.current && !isCloudSeededRef.current) {
+      const count = membersRef.current.length;
+      if (
+        confirm(
+          `O banco na nuvem ainda está vazio.\n\nDeseja enviar a árvore exibida neste aparelho (${count} pessoas) para a nuvem agora, deixando igual em todos os dispositivos?`
+        )
+      ) {
+        await persistMembers(membersRef.current, {
+          forceFullReplace: true,
+          passwordOverride: password
+        });
+      }
+    }
+  };
+
+  const handleLockEditing = () => {
+    setIsUnlocked(false);
+    setEditPassword('');
+    editPasswordRef.current = '';
+    saveSessionPassword('');
+    setIsEditModalOpen(false);
+  };
+
+  const handlePushToCloud = async () => {
+    if (!canEdit) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
+    if (
+      confirm(
+        `Deseja enviar todos os ${membersRef.current.length} membros exibidos neste aparelho como a versão oficial na nuvem?`
+      )
+    ) {
+      await persistMembers(membersRef.current, { forceFullReplace: true });
+      alert('Árvore sincronizada na nuvem com sucesso! Todos os dispositivos já verão esta versão.');
+    }
+  };
 
   // Open Edit Modal for a specific member
   const handleEditPerson = (person) => {
+    if (!canEdit) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
     setEditingPerson(person);
     setInitialRelation(null);
     setIsEditModalOpen(true);
@@ -72,6 +248,10 @@ export default function App() {
 
   // Add a new child to a member
   const handleAddChild = (parentPerson) => {
+    if (!canEdit) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
     setEditingPerson(null);
     setInitialRelation({ type: 'child', relativeId: parentPerson.id });
     setIsEditModalOpen(true);
@@ -79,6 +259,10 @@ export default function App() {
 
   // Add brand new standalone or immigrant member
   const handleAddNewMember = () => {
+    if (!canEdit) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
     setEditingPerson(null);
     setInitialRelation(null);
     setIsEditModalOpen(true);
@@ -86,14 +270,12 @@ export default function App() {
 
   // Save or update person in state
   const handleSavePerson = (personData) => {
-    let updated = [...members];
+    let updated = [...membersRef.current];
     const index = updated.findIndex((m) => m.id === personData.id);
 
     if (index >= 0) {
-      // Update existing
       updated[index] = personData;
     } else {
-      // Add new
       updated.push(personData);
     }
 
@@ -124,7 +306,6 @@ export default function App() {
 
     while (queue.length > 0) {
       const currentParentId = queue.shift();
-      // Find all members who list currentParentId in their parents array
       const children = allMembers.filter((m) => (m.parents || []).includes(currentParentId));
       for (const child of children) {
         if (!descendantIds.has(child.id)) {
@@ -139,10 +320,16 @@ export default function App() {
 
   // Delete person and all their descendants with confirmation
   const handleDeletePerson = useCallback((personId) => {
-    const target = members.find((m) => m.id === personId);
+    if (!canEdit) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
+
+    const currentMembers = membersRef.current;
+    const target = currentMembers.find((m) => m.id === personId);
     if (!target) return;
 
-    const descendantIds = getDescendantIds(personId, members);
+    const descendantIds = getDescendantIds(personId, currentMembers);
     const descendantCount = descendantIds.length;
 
     let confirmMsg = '';
@@ -158,7 +345,7 @@ export default function App() {
 
     const idsToRemove = new Set([personId, ...descendantIds]);
 
-    const updated = members
+    const updated = currentMembers
       .filter((m) => !idsToRemove.has(m.id))
       .map((m) => ({
         ...m,
@@ -170,14 +357,14 @@ export default function App() {
     if (selectedPerson && idsToRemove.has(selectedPerson.id)) {
       setSelectedPerson(null);
     }
-  }, [members, getDescendantIds, selectedPerson]);
+  }, [canEdit, getDescendantIds, persistMembers, selectedPerson]);
 
-  // Global keyboard shortcut: Delete or Backspace key deletes selected person
+  // Global keyboard shortcut: Delete or Backspace key deletes selected person (only when unlocked)
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (!canEdit) return;
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
 
-      // Ignore if user is currently typing in an input, textarea, or select
       const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
       const isInputFocused =
         activeTag === 'input' ||
@@ -186,9 +373,7 @@ export default function App() {
         document.activeElement?.isContentEditable;
 
       if (isInputFocused) return;
-
-      // Do not trigger keyboard delete if edit modal or party modal is open
-      if (isEditModalOpen || isPartyModeOpen) return;
+      if (isEditModalOpen || isPartyModeOpen || isUnlockModalOpen) return;
 
       if (selectedPerson) {
         e.preventDefault();
@@ -198,70 +383,65 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedPerson, isEditModalOpen, isPartyModeOpen, handleDeletePerson]);
+  }, [canEdit, selectedPerson, isEditModalOpen, isPartyModeOpen, isUnlockModalOpen, handleDeletePerson]);
 
   // Reorder siblings left/right (or up/down) in birth order
   const handleMoveSibling = useCallback((personId, direction) => {
-    setMembers((prevMembers) => {
-      const target = prevMembers.find((m) => m.id === personId);
-      if (!target) return prevMembers;
+    if (!canEdit) return;
 
-      let siblings = [];
-      if (target.generation === 2) {
-        // All Generation 2 children are peers under Giuseppe & Catterina
-        siblings = prevMembers.filter((m) => m.generation === 2);
-      } else if (target.parents && target.parents.length > 0) {
-        const parentId = target.parents[0];
-        siblings = prevMembers.filter(
-          (m) => m.generation === target.generation && (m.parents || []).includes(parentId)
-        );
-      } else {
-        siblings = prevMembers.filter(
-          (m) => m.generation === target.generation && m.branchId === target.branchId
-        );
-      }
+    const prevMembers = membersRef.current;
+    const target = prevMembers.find((m) => m.id === personId);
+    if (!target) return;
 
-      if (siblings.length <= 1) return prevMembers;
+    let siblings = [];
+    if (target.generation === 2) {
+      siblings = prevMembers.filter((m) => m.generation === 2);
+    } else if (target.parents && target.parents.length > 0) {
+      const parentId = target.parents[0];
+      siblings = prevMembers.filter(
+        (m) => m.generation === target.generation && (m.parents || []).includes(parentId)
+      );
+    } else {
+      siblings = prevMembers.filter(
+        (m) => m.generation === target.generation && m.branchId === target.branchId
+      );
+    }
 
-      const sorted = sortMembersByOrder(siblings);
-      const currentIndex = sorted.findIndex((m) => m.id === personId);
-      if (currentIndex === -1) return prevMembers;
+    if (siblings.length <= 1) return;
 
-      const targetIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
-      if (targetIndex < 0 || targetIndex >= sorted.length) return prevMembers;
+    const sorted = sortMembersByOrder(siblings);
+    const currentIndex = sorted.findIndex((m) => m.id === personId);
+    if (currentIndex === -1) return;
 
-      // Swap positions
-      const swapped = [...sorted];
-      const temp = swapped[currentIndex];
-      swapped[currentIndex] = swapped[targetIndex];
-      swapped[targetIndex] = temp;
+    const targetIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= sorted.length) return;
 
-      // Assign sequential integer order numbers: 1, 2, 3...
-      const orderMap = new Map();
-      swapped.forEach((m, idx) => {
-        orderMap.set(m.id, idx + 1);
-      });
+    const swapped = [...sorted];
+    const temp = swapped[currentIndex];
+    swapped[currentIndex] = swapped[targetIndex];
+    swapped[targetIndex] = temp;
 
-      const updated = prevMembers.map((m) => {
-        if (orderMap.has(m.id)) {
-          return { ...m, order: orderMap.get(m.id) };
-        }
-        return m;
-      });
-
-      saveTreeData(updated);
-
-      // Keep selectedPerson updated if currently selected
-      if (selectedPerson) {
-        const updatedSelected = updated.find((m) => m.id === selectedPerson.id);
-        if (updatedSelected) {
-          setSelectedPerson(updatedSelected);
-        }
-      }
-
-      return updated;
+    const orderMap = new Map();
+    swapped.forEach((m, idx) => {
+      orderMap.set(m.id, idx + 1);
     });
-  }, [selectedPerson]);
+
+    const updated = prevMembers.map((m) => {
+      if (orderMap.has(m.id)) {
+        return { ...m, order: orderMap.get(m.id) };
+      }
+      return m;
+    });
+
+    persistMembers(updated);
+
+    if (selectedPerson) {
+      const updatedSelected = updated.find((m) => m.id === selectedPerson.id);
+      if (updatedSelected) {
+        setSelectedPerson(updatedSelected);
+      }
+    }
+  }, [canEdit, persistMembers, selectedPerson]);
 
   // Export JSON backup
   const handleExportBackup = () => {
@@ -270,14 +450,19 @@ export default function App() {
 
   // Import JSON backup
   const handleImportBackup = async (event) => {
+    if (!canEdit) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
+
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const importedData = await importFromJson(file);
       if (Array.isArray(importedData) && importedData.length > 0) {
-        persistMembers(importedData);
-        alert(`Backup carregado com sucesso! ${importedData.length} membros da família importados.`);
+        await persistMembers(importedData, { forceFullReplace: true });
+        alert(`Backup carregado e salvo na nuvem com sucesso! ${importedData.length} membros importados.`);
       } else {
         alert('O arquivo selecionado não contém um formato de árvore genealógica reconhecido.');
       }
@@ -287,13 +472,18 @@ export default function App() {
   };
 
   // Reset to original dataset
-  const handleResetData = () => {
+  const handleResetData = async () => {
+    if (!canEdit) {
+      setIsUnlockModalOpen(true);
+      return;
+    }
+
     if (
       confirm(
-        'Deseja realmente restaurar os dados originais da Família Visentin? Quaisquer alterações locais não salvas em backup serão perdidas.'
+        'Deseja realmente restaurar os dados originais da Família Visentin? As alterações atuais serão substituídas em todos os dispositivos.'
       )
     ) {
-      persistMembers(sampleFamilyMembers);
+      await persistMembers(sampleFamilyMembers, { forceFullReplace: true });
       setSelectedPerson(null);
       alert('Dados originais restaurados com sucesso!');
     }
@@ -342,13 +532,38 @@ export default function App() {
         activeBranch={activeBranch}
         setActiveBranch={setActiveBranch}
         branches={branches}
-        onAddNewMember={handleAddNewMember}
+        canEdit={canEdit}
+        isPasswordProtected={isPasswordProtected}
+        cloudConfigured={cloudConfigured}
+        syncState={syncState}
+        onOpenUnlockModal={() => setIsUnlockModalOpen(true)}
+        onLockEditing={handleLockEditing}
+        onPushToCloud={handlePushToCloud}
+        onAddNewMember={canEdit ? handleAddNewMember : null}
         onOpenPartyMode={() => setIsPartyModeOpen(true)}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
         onResetData={handleResetData}
         onExportPng={currentView === 'tree' ? handleExportPng : null}
       />
+
+      {/* First-time Cloud Sync Prompt Banner (only shown to unlocked admin when cloud DB is still empty) */}
+      {cloudConfigured && !isCloudSeeded && canEdit && (
+        <div className="bg-amber-100 border-b border-amber-300 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 z-20">
+          <div className="flex items-center gap-2 font-medium">
+            <Cloud size={15} className="text-amber-700 shrink-0" />
+            <span>
+              O banco na nuvem ainda está vazio. Clique ao lado para publicar a árvore deste aparelho ({members.length} pessoas) para todos os dispositivos.
+            </span>
+          </div>
+          <button
+            onClick={handlePushToCloud}
+            className="bg-[#1b4d3e] hover:bg-[#133926] text-amber-50 font-semibold px-3 py-1 rounded-lg shadow-sm transition"
+          >
+            Publicar na Nuvem Agora
+          </button>
+        </div>
+      )}
 
       {/* Main View Area */}
       <main className="flex-1 relative overflow-hidden">
@@ -359,11 +574,11 @@ export default function App() {
             activeBranch={activeBranch}
             selectedPerson={selectedPerson}
             onSelectPerson={setSelectedPerson}
-            onAddChild={handleAddChild}
-            onEditPerson={handleEditPerson}
+            onAddChild={canEdit ? handleAddChild : null}
+            onEditPerson={canEdit ? handleEditPerson : null}
             onExportPng={handleExportPng}
             onFocusBranch={(branchId) => setActiveBranch(branchId)}
-            onMoveSibling={handleMoveSibling}
+            onMoveSibling={canEdit ? handleMoveSibling : null}
           />
         )}
 
@@ -372,9 +587,9 @@ export default function App() {
             members={members}
             branches={branches}
             onSelectPerson={setSelectedPerson}
-            onEditPerson={handleEditPerson}
-            onAddChild={handleAddChild}
-            onAddNewMember={handleAddNewMember}
+            onEditPerson={canEdit ? handleEditPerson : null}
+            onAddChild={canEdit ? handleAddChild : null}
+            onAddNewMember={canEdit ? handleAddNewMember : null}
           />
         )}
 
@@ -396,11 +611,12 @@ export default function App() {
         allMembers={members}
         branches={branches}
         onClose={() => setSelectedPerson(null)}
-        onEdit={handleEditPerson}
-        onAddChild={handleAddChild}
-        onDelete={handleDeletePerson}
+        onEdit={canEdit ? handleEditPerson : null}
+        onAddChild={canEdit ? handleAddChild : null}
+        onDelete={canEdit ? handleDeletePerson : null}
+        onRequestUnlock={isPasswordProtected && !canEdit ? () => setIsUnlockModalOpen(true) : null}
         onSelectPerson={setSelectedPerson}
-        onMoveSibling={handleMoveSibling}
+        onMoveSibling={canEdit ? handleMoveSibling : null}
         onFocusBranch={(branchId) => {
           setActiveBranch(branchId);
           setCurrentView('tree');
@@ -421,6 +637,13 @@ export default function App() {
           setEditingPerson(null);
           setInitialRelation(null);
         }}
+      />
+
+      {/* Password Unlock Modal */}
+      <PasswordUnlockModal
+        isOpen={isUnlockModalOpen}
+        onClose={() => setIsUnlockModalOpen(false)}
+        onUnlock={handleUnlock}
       />
 
       {/* Party / Presentation Fullscreen Mode */}

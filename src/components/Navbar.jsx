@@ -12,7 +12,11 @@ import {
   ChevronDown,
   Menu,
   X,
-  FileText
+  FileText,
+  Lock,
+  Unlock,
+  Cloud,
+  Check
 } from 'lucide-react';
 import { BRANCHES } from '../data/initialFamilyData';
 
@@ -22,6 +26,13 @@ export default function Navbar({
   activeBranch,
   setActiveBranch,
   branches = BRANCHES,
+  canEdit = true,
+  isPasswordProtected = false,
+  cloudConfigured = false,
+  syncState = 'idle', // 'idle' | 'syncing' | 'saved' | 'error'
+  onOpenUnlockModal,
+  onLockEditing,
+  onPushToCloud,
   onAddNewMember,
   onOpenPartyMode,
   onExportBackup,
@@ -101,6 +112,24 @@ export default function Navbar({
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Cloud Sync Status Indicator */}
+            {cloudConfigured && (
+              <div
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-medium bg-[#0e291b] border border-emerald-800/60 text-emerald-200"
+                title="Sincronizado com banco de dados Turso na nuvem"
+              >
+                <Cloud size={13} className={syncState === 'syncing' ? 'animate-bounce text-amber-300' : 'text-emerald-400'} />
+                <span>
+                  {syncState === 'syncing'
+                    ? 'Salvando...'
+                    : syncState === 'error'
+                    ? 'Erro Nuvem'
+                    : 'Nuvem'}
+                </span>
+                {syncState === 'saved' && <Check size={12} className="text-emerald-400" />}
+              </div>
+            )}
+
             {/* Presentation / Party Mode Button */}
             <button
               onClick={onOpenPartyMode}
@@ -111,15 +140,40 @@ export default function Navbar({
               <span className="hidden sm:inline">Modo Festa</span>
             </button>
 
-            {/* Add Member Button */}
-            <button
-              onClick={onAddNewMember}
-              className="flex items-center gap-1.5 bg-[#1b4d3e] hover:bg-[#153e32] text-amber-50 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-semibold border border-emerald-600/40 shadow-sm transition"
-              title="Cadastrar novo membro na árvore"
-            >
-              <UserPlus size={16} />
-              <span className="hidden lg:inline">+ Novo Membro</span>
-            </button>
+            {/* Lock / Unlock Edit Button */}
+            {isPasswordProtected && (
+              canEdit ? (
+                <button
+                  onClick={onLockEditing}
+                  className="flex items-center gap-1.5 bg-emerald-700/60 hover:bg-emerald-700 text-amber-200 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs font-semibold border border-amber-400/40 shadow-sm transition"
+                  title="Edição liberada neste navegador. Clique para bloquear novamente."
+                >
+                  <Unlock size={15} />
+                  <span className="hidden xl:inline">Edição Ativa</span>
+                </button>
+              ) : (
+                <button
+                  onClick={onOpenUnlockModal}
+                  className="flex items-center gap-1.5 bg-[#0e291b] hover:bg-[#1b4d3e] text-amber-200 px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs font-semibold border border-amber-500/40 shadow-sm transition"
+                  title="Desbloquear edição com senha"
+                >
+                  <Lock size={15} />
+                  <span className="hidden sm:inline">Editar</span>
+                </button>
+              )
+            )}
+
+            {/* Add Member Button (Only when editing is allowed) */}
+            {canEdit && onAddNewMember && (
+              <button
+                onClick={onAddNewMember}
+                className="flex items-center gap-1.5 bg-[#1b4d3e] hover:bg-[#153e32] text-amber-50 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-semibold border border-emerald-600/40 shadow-sm transition"
+                title="Cadastrar novo membro na árvore"
+              >
+                <UserPlus size={16} />
+                <span className="hidden lg:inline">+ Novo Membro</span>
+              </button>
+            )}
 
             {/* Backup / Options Dropdown */}
             <div className="relative">
@@ -139,7 +193,7 @@ export default function Navbar({
                     className="fixed inset-0 z-30"
                     onClick={() => setIsBackupMenuOpen(false)}
                   />
-                  <div className="absolute right-0 mt-2 w-56 bg-[#FAF9F5] text-stone-800 rounded-2xl shadow-2xl border border-stone-300 py-2 z-40 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="absolute right-0 mt-2 w-60 bg-[#FAF9F5] text-stone-800 rounded-2xl shadow-2xl border border-stone-300 py-2 z-40 animate-in fade-in zoom-in-95 duration-150">
                     <div className="px-3 py-1.5 border-b border-stone-200">
                       <span className="text-[10px] uppercase font-bold text-stone-400">
                         Gerenciar Dados da Árvore
@@ -157,19 +211,21 @@ export default function Navbar({
                       Baixar Backup (JSON)
                     </button>
 
-                    <label className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-xs font-semibold text-stone-700 hover:text-emerald-950 flex items-center gap-2 cursor-pointer">
-                      <Upload size={14} className="text-emerald-800" />
-                      Carregar Backup (JSON)
-                      <input
-                        type="file"
-                        accept=".json"
-                        onChange={(e) => {
-                          setIsBackupMenuOpen(false);
-                          onImportBackup(e);
-                        }}
-                        className="hidden"
-                      />
-                    </label>
+                    {canEdit && (
+                      <label className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-xs font-semibold text-stone-700 hover:text-emerald-950 flex items-center gap-2 cursor-pointer">
+                        <Upload size={14} className="text-emerald-800" />
+                        Carregar Backup (JSON)
+                        <input
+                          type="file"
+                          accept=".json"
+                          onChange={(e) => {
+                            setIsBackupMenuOpen(false);
+                            onImportBackup(e);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
 
                     {onExportPng && (
                       <button
@@ -184,18 +240,37 @@ export default function Navbar({
                       </button>
                     )}
 
-                    <div className="border-t border-stone-200 my-1" />
+                    {canEdit && cloudConfigured && onPushToCloud && (
+                      <>
+                        <div className="border-t border-stone-200 my-1" />
+                        <button
+                          onClick={() => {
+                            setIsBackupMenuOpen(false);
+                            onPushToCloud();
+                          }}
+                          className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-xs font-semibold text-emerald-800 hover:text-emerald-950 flex items-center gap-2"
+                        >
+                          <Cloud size={14} className="text-emerald-700" />
+                          Sincronizar Tudo para Nuvem
+                        </button>
+                      </>
+                    )}
 
-                    <button
-                      onClick={() => {
-                        setIsBackupMenuOpen(false);
-                        onResetData();
-                      }}
-                      className="w-full text-left px-3.5 py-2 hover:bg-red-50 text-xs font-semibold text-red-600 flex items-center gap-2"
-                    >
-                      <RefreshCw size={14} />
-                      Restaurar Dados Originais
-                    </button>
+                    {canEdit && (
+                      <>
+                        <div className="border-t border-stone-200 my-1" />
+                        <button
+                          onClick={() => {
+                            setIsBackupMenuOpen(false);
+                            onResetData();
+                          }}
+                          className="w-full text-left px-3.5 py-2 hover:bg-red-50 text-xs font-semibold text-red-600 flex items-center gap-2"
+                        >
+                          <RefreshCw size={14} />
+                          Restaurar Dados Originais
+                        </button>
+                      </>
+                    )}
                   </div>
                 </>
               )}

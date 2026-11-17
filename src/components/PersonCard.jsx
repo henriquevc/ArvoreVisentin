@@ -60,16 +60,18 @@ export default function PersonCard({
             <span className="text-[11px] font-bold text-white mt-1.5 group-hover/g:text-amber-300 transition truncate max-w-full">
               {giuseppe?.name?.split(' ')[0] || 'Giuseppe'}
             </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                giuseppe && onEdit(giuseppe);
-              }}
-              className="mt-1 text-[10px] text-amber-300 hover:text-white font-semibold flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/40 px-2 py-0.5 rounded-md border border-amber-500/30 transition"
-            >
-              <Edit2 size={10} /> Editar
-            </button>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  giuseppe && onEdit(giuseppe);
+                }}
+                className="mt-1 text-[10px] text-amber-300 hover:text-white font-semibold flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/40 px-2 py-0.5 rounded-md border border-amber-500/30 transition"
+              >
+                <Edit2 size={10} /> Editar
+              </button>
+            )}
           </div>
 
           {/* Catterina Side */}
@@ -93,16 +95,18 @@ export default function PersonCard({
             <span className="text-[11px] font-bold text-white mt-1.5 group-hover/c:text-amber-300 transition truncate max-w-full">
               {catarina?.name?.split(' ')[0] || 'Catterina'}
             </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                catarina && onEdit(catarina);
-              }}
-              className="mt-1 text-[10px] text-amber-300 hover:text-white font-semibold flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/40 px-2 py-0.5 rounded-md border border-amber-500/30 transition"
-            >
-              <Edit2 size={10} /> Editar
-            </button>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  catarina && onEdit(catarina);
+                }}
+                className="mt-1 text-[10px] text-amber-300 hover:text-white font-semibold flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/40 px-2 py-0.5 rounded-md border border-amber-500/30 transition"
+              >
+                <Edit2 size={10} /> Editar
+              </button>
+            )}
           </div>
         </div>
 
@@ -276,30 +280,38 @@ export default function PersonCard({
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(person);
-            }}
-            className="text-[10px] text-stone-500 hover:text-emerald-800 font-semibold flex items-center gap-0.5 py-0.5 px-1 rounded hover:bg-stone-100"
-          >
-            <Edit2 size={10} /> Editar
-          </button>
+          {onEdit ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(person);
+              }}
+              className="text-[10px] text-stone-500 hover:text-emerald-800 font-semibold flex items-center gap-0.5 py-0.5 px-1 rounded hover:bg-stone-100"
+            >
+              <Edit2 size={10} /> Editar
+            </button>
+          ) : (
+            <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1 px-1">
+              <Eye size={10} /> Ver ficha
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddChild(person);
-            }}
-            className="text-[10px] text-emerald-800 hover:text-emerald-950 font-bold flex items-center gap-0.5 py-0.5 px-1.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
-            title="Adicionar Filho(a)"
-          >
-            <Plus size={10} /> Filho
-          </button>
+          {onAddChild && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddChild(person);
+              }}
+              className="text-[10px] text-emerald-800 hover:text-emerald-950 font-bold flex items-center gap-0.5 py-0.5 px-1.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+              title="Adicionar Filho(a)"
+            >
+              <Plus size={10} /> Filho
+            </button>
+          )}
 
           {hasChildren && onToggleCollapse && (
             <button

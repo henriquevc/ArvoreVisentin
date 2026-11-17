@@ -94,12 +94,14 @@ export default function DirectoryView({
           </p>
         </div>
 
-        <button
-          onClick={onAddNewMember}
-          className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-emerald-950 font-bold px-5 py-3 rounded-2xl shadow-lg transition"
-        >
-          <UserPlus size={18} /> Adicionar Novo Membro
-        </button>
+        {onAddNewMember && (
+          <button
+            onClick={onAddNewMember}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-emerald-950 font-bold px-5 py-3 rounded-2xl shadow-lg transition"
+          >
+            <UserPlus size={18} /> Adicionar Novo Membro
+          </button>
+        )}
       </div>
 
       {/* Filter and Search Bar */}
@@ -276,28 +278,34 @@ export default function DirectoryView({
               </div>
 
               {/* Bottom Quick Actions */}
-              <div className="pt-3 border-t border-stone-100 mt-3 flex items-center justify-between text-xs">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditPerson(person);
-                  }}
-                  className="text-stone-500 hover:text-emerald-800 font-semibold text-[11px]"
-                >
-                  Editar
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddChild(person);
-                  }}
-                  className="text-emerald-800 hover:text-emerald-950 font-bold bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200 text-[11px]"
-                >
-                  + Adicionar Filho
-                </button>
-              </div>
+              {(onEditPerson || onAddChild) && (
+                <div className="pt-3 border-t border-stone-100 mt-3 flex items-center justify-between text-xs">
+                  {onEditPerson && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditPerson(person);
+                      }}
+                      className="text-stone-500 hover:text-emerald-800 font-semibold text-[11px]"
+                    >
+                      Editar
+                    </button>
+                  )}
+                  {onAddChild && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddChild(person);
+                      }}
+                      className="text-emerald-800 hover:text-emerald-950 font-bold bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200 text-[11px]"
+                    >
+                      + Adicionar Filho
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
