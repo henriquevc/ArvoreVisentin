@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { toPng } from 'html-to-image';
 import { Cloud } from 'lucide-react';
 import Navbar from './components/Navbar';
 import TreeCanvas from './components/TreeCanvas';
@@ -11,6 +10,7 @@ import PartyPresentationModal from './components/PartyPresentationModal';
 import PasswordUnlockModal from './components/PasswordUnlockModal';
 import { sampleFamilyMembers, getBranches, sortMembersByOrder } from './data/initialFamilyData';
 import { loadTreeData, saveTreeData, exportToJson, importFromJson } from './services/storage';
+import { downloadTreePosterPng } from './utils/exportTreeImage';
 import {
   fetchCloudTree,
   verifyEditPassword,
@@ -55,12 +55,14 @@ export default function App() {
   const [editPassword, setEditPassword] = useState('');
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
   const [syncState, setSyncState] = useState('idle'); // 'idle' | 'syncing' | 'saved' | 'error'
+  const [isExportingPng, setIsExportingPng] = useState(false);
 
   // Refs to avoid stale closures in async sync helpers
   const membersRef = useRef(members);
   const cloudConfiguredRef = useRef(cloudConfigured);
   const isCloudSeededRef = useRef(isCloudSeeded);
   const editPasswordRef = useRef(editPassword);
+  const collapsedNodesRef = useRef(new Set());
 
   useEffect(() => {
     membersRef.current = members;
@@ -489,27 +491,24 @@ export default function App() {
     }
   };
 
-  // Export high-res PNG image of the tree canvas
+  // Export high-res PNG poster of the tree directly via HTML5 2D Canvas
   const handleExportPng = async () => {
-    const node = document.getElementById('tree-export-viewport');
-    if (!node) {
-      alert('Visualização da árvore não encontrada.');
-      return;
-    }
+    if (isExportingPng) return;
+    setIsExportingPng(true);
 
     try {
-      const dataUrl = await toPng(node, {
-        backgroundColor: '#f7f9f6',
-        quality: 0.95,
-        cacheBust: true
+      await downloadTreePosterPng({
+        members: membersRef.current,
+        branches,
+        activeBranch,
+        collapsedNodes: collapsedNodesRef.current,
+        filename: `arvore_visentin_${activeBranch}_${new Date().toISOString().slice(0, 10)}.png`
       });
-      const link = document.createElement('a');
-      link.download = `arvore_visentin_${activeBranch}_${Date.now()}.png`;
-      link.href = dataUrl;
-      link.click();
     } catch (err) {
       console.error('Error generating image', err);
-      alert('Não foi possível exportar a imagem. Tente reduzir o zoom da árvore e tente novamente.');
+      alert(err?.message || 'Não foi possível gerar a imagem da árvore.');
+    } finally {
+      setIsExportingPng(false);
     }
   };
 
@@ -544,7 +543,7 @@ export default function App() {
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
         onResetData={handleResetData}
-        onExportPng={currentView === 'tree' ? handleExportPng : null}
+        onExportPng={handleExportPng}
       />
 
       {/* First-time Cloud Sync Prompt Banner (only shown to unlocked admin when cloud DB is still empty) */}
@@ -573,6 +572,10 @@ export default function App() {
             branches={branches}
             activeBranch={activeBranch}
             selectedPerson={selectedPerson}
+            isExportingPng={isExportingPng}
+            onCollapsedChange={(setVal) => {
+              collapsedNodesRef.current = setVal;
+            }}
             onSelectPerson={setSelectedPerson}
             onAddChild={canEdit ? handleAddChild : null}
             onEditPerson={canEdit ? handleEditPerson : null}

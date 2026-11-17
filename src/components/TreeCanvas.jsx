@@ -15,13 +15,16 @@ import {
 } from 'lucide-react';
 import PersonCard from './PersonCard';
 import FamilyBoardView from './FamilyBoardView';
-import { BRANCHES, GENERATION_LABELS, sortMembersByOrder } from '../data/initialFamilyData';
+import { BRANCHES } from '../data/initialFamilyData';
+import { computeTreeLayout } from '../utils/exportTreeImage';
 
 export default function TreeCanvas({
   members = [],
   branches = BRANCHES,
   activeBranch = 'all',
   selectedPerson = null,
+  isExportingPng = false,
+  onCollapsedChange,
   onSelectPerson,
   onAddChild,
   onEditPerson,
@@ -106,226 +109,17 @@ export default function TreeCanvas({
     setScale((s) => Math.min(2.0, Math.max(0.2, Number((s + zoomDelta).toFixed(2)))));
   };
 
+  useEffect(() => {
+    if (onCollapsedChange) {
+      onCollapsedChange(collapsedNodes);
+    }
+  }, [collapsedNodes, onCollapsedChange]);
+
   // Build hierarchical layout with unified couple root
-  const layout = useMemo(() => {
-    const CARD_W = 240;
-    const CARD_H = 135;
-    const COUPLE_W = 320;
-    const COUPLE_H = 165;
-    const GAP_X = 28;
-    const GAP_Y = 85;
-
-    // Filter relevant members
-    let relevantMembers = members;
-    if (activeBranch !== 'all') {
-      relevantMembers = members.filter(
-        (m) =>
-          m.branchId === activeBranch ||
-          m.branchId === 'all' ||
-          m.id === `p-${activeBranch}`
-      );
-    }
-
-    const branchMap = new Map();
-    (branches || BRANCHES).forEach((b) => branchMap.set(b.id, b));
-
-    const memberMap = new Map();
-    relevantMembers.forEach((m) => {
-      const bObj = branchMap.get(m.branchId);
-      memberMap.set(m.id, {
-        ...m,
-        childrenList: [],
-        width: CARD_W,
-        height: CARD_H,
-        branchName: bObj ? bObj.name : '',
-        branchShortName: bObj ? bObj.shortName : '',
-        x: 0,
-        y: 0
-      });
-    });
-
-    // Populate children lists (using generation progression to avoid loops)
-    relevantMembers.forEach((m) => {
-      (m.parents || []).forEach((pid) => {
-        if (memberMap.has(pid)) {
-          const parentNode = memberMap.get(pid);
-          if (!parentNode.childrenList.includes(m.id)) {
-            parentNode.childrenList.push(m.id);
-          }
-        }
-      });
-    });
-
-    // Sort every childrenList by manual birth order!
-    memberMap.forEach((node) => {
-      if (node.childrenList && node.childrenList.length > 1) {
-        const sortedObjects = sortMembersByOrder(
-          node.childrenList.map((id) => memberMap.get(id)).filter(Boolean)
-        );
-        node.childrenList = sortedObjects.map((o) => o.id);
-      }
-    });
-
-    let rootNodes = [];
-
-    if (activeBranch === 'all') {
-      // Create unified Patriarchs Couple node (Giuseppe & Catarina)
-      const giuseppe = members.find((m) => m.id === 'p-giuseppe') || members.find((m) => m.generation === 1);
-      const catarina = members.find((m) => m.id === 'p-catarina') || members.filter((m) => m.generation === 1)[1];
-
-      // Immigrant children are Generation 2, sorted by manual birth order!
-      const immigrantChildren = sortMembersByOrder(
-        relevantMembers.filter((m) => m.generation === 2)
-      );
-
-      const coupleNode = {
-        id: 'couple-patriarchs',
-        name: `${giuseppe?.name || 'Giuseppe'} & ${catarina?.name || 'Catterina'} Visentin`,
-        isCouple: true,
-        husband: giuseppe,
-        wife: catarina,
-        generation: 1,
-        branchId: 'all',
-        width: COUPLE_W,
-        height: COUPLE_H,
-        childrenList: immigrantChildren.map((c) => c.id),
-        x: 0,
-        y: 0
-      };
-
-      memberMap.set(coupleNode.id, coupleNode);
-      rootNodes = [coupleNode];
-    } else {
-      // In branch view, root is the immigrant child (G2)
-      const branchChild = relevantMembers.find(
-        (m) => m.branchId === activeBranch && m.generation === 2
-      );
-      if (branchChild && memberMap.has(branchChild.id)) {
-        rootNodes = [memberMap.get(branchChild.id)];
-      } else {
-        // Fallback to top-level members in this branch, sorted by order
-        rootNodes = sortMembersByOrder(
-          relevantMembers
-            .filter((m) => (m.parents || []).length === 0 && memberMap.has(m.id))
-            .map((m) => memberMap.get(m.id))
-        );
-      }
-    }
-
-    // Measure subtree widths bottom-up
-    const subtreeWidths = new Map();
-    function measureSubtree(nodeId) {
-      const node = memberMap.get(nodeId);
-      if (!node) return 0;
-
-      const selfW = node.width || CARD_W;
-
-      // If collapsed or no children
-      if (collapsedNodes.has(nodeId) || !node.childrenList || node.childrenList.length === 0) {
-        subtreeWidths.set(nodeId, selfW);
-        return selfW;
-      }
-
-      let totalChildrenW = 0;
-      node.childrenList.forEach((childId, idx) => {
-        const childW = measureSubtree(childId);
-        totalChildrenW += childW + (idx > 0 ? GAP_X : 0);
-      });
-
-      const finalW = Math.max(selfW, totalChildrenW);
-      subtreeWidths.set(nodeId, finalW);
-      return finalW;
-    }
-
-    rootNodes.forEach((r) => measureSubtree(r.id));
-
-    // Assign positions top-down
-    const positionedNodes = [];
-    const links = [];
-    const visitedSet = new Set();
-
-    function positionSubtree(nodeId, startX, currentY) {
-      if (visitedSet.has(nodeId)) return;
-      visitedSet.add(nodeId);
-
-      const node = memberMap.get(nodeId);
-      if (!node) return;
-
-      const subW = subtreeWidths.get(nodeId) || node.width;
-      const nodeX = startX + (subW - node.width) / 2;
-      const nodeY = currentY;
-
-      node.x = nodeX;
-      node.y = nodeY;
-      positionedNodes.push(node);
-
-      if (collapsedNodes.has(nodeId)) {
-        return;
-      }
-
-      let curChildX = startX;
-      node.childrenList.forEach((childId) => {
-        const childNode = memberMap.get(childId);
-        if (!childNode) return;
-
-        const childW = subtreeWidths.get(childId) || childNode.width;
-        const childY = currentY + node.height + GAP_Y;
-
-        positionSubtree(childId, curChildX, childY);
-
-        links.push({
-          id: `${node.id}->${childNode.id}`,
-          sourceX: nodeX + node.width / 2,
-          sourceY: nodeY + node.height,
-          targetX: childNode.x + childNode.width / 2,
-          targetY: childNode.y,
-          branchId: childNode.branchId
-        });
-
-        curChildX += childW + GAP_X;
-      });
-    }
-
-    let curRootX = 60;
-    rootNodes.forEach((r) => {
-      const rw = subtreeWidths.get(r.id) || r.width;
-      positionSubtree(r.id, curRootX, 40);
-      curRootX += rw + GAP_X * 2;
-    });
-
-    // Compute bounding box
-    let minX = Infinity,
-      maxX = -Infinity,
-      minY = Infinity,
-      maxY = -Infinity;
-
-    positionedNodes.forEach((n) => {
-      if (n.x < minX) minX = n.x;
-      if (n.x + n.width > maxX) maxX = n.x + n.width;
-      if (n.y < minY) minY = n.y;
-      if (n.y + n.height > maxY) maxY = n.y + n.height;
-    });
-
-    if (minX === Infinity) {
-      minX = 0;
-      maxX = 1000;
-      minY = 0;
-      maxY = 800;
-    }
-
-    return {
-      nodes: positionedNodes,
-      links,
-      bounds: {
-        minX,
-        maxX,
-        minY,
-        maxY,
-        width: Math.max(1200, maxX - minX + 200),
-        height: Math.max(800, maxY - minY + 200)
-      }
-    };
-  }, [members, activeBranch, collapsedNodes]);
+  const layout = useMemo(
+    () => computeTreeLayout({ members, branches, activeBranch, collapsedNodes }),
+    [members, branches, activeBranch, collapsedNodes]
+  );
 
   // Fit to screen helper
   const fitToScreen = useCallback(() => {
@@ -471,10 +265,11 @@ export default function TreeCanvas({
             {onExportPng && (
               <button
                 onClick={onExportPng}
-                className="flex items-center gap-1 text-[11px] font-bold bg-[#1b4d3e] hover:bg-[#133926] text-white px-2.5 py-1 rounded-lg shadow-sm transition"
+                disabled={isExportingPng}
+                className="flex items-center gap-1 text-[11px] font-bold bg-[#1b4d3e] hover:bg-[#133926] disabled:opacity-60 text-white px-2.5 py-1 rounded-lg shadow-sm transition"
                 title="Baixar imagem em alta resolução"
               >
-                <Download size={13} /> Imagem
+                <Download size={13} /> {isExportingPng ? 'Gerando...' : 'Imagem'}
               </button>
             )}
           </div>
